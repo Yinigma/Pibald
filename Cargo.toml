@@ -1,0 +1,17 @@
+[package]
+name = "star_scouts_test"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glam = "0.24.2"
+wgpu = {git= "https://github.com/gfx-rs/wgpu.git"}
+sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2.git", features = ["bundled", "raw-window-handle"]}
+pollster = "0.3.0"
+bytemuck = { version = "1.13.1", features = [ "derive" ] }
+anyhow = "1.0.72"
+pest = "2.7.2"
+pest_derive = "2.7.2"
+byteorder = "1.5.0"

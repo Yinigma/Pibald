@@ -1,0 +1,199 @@
+pibald = { color_map+ ~ placement+}
+
+placement = 
+{
+    SINGULAR ~ L_PAREN ~ mat4 ~ DELIM ~ DIGIT+ ~ R_PAREN | 
+    TILE_PATTERN ~ L_PAREN ~ mat4 ~ DELIM ~ DIGIT+ ~ R_PAREN 
+}
+
+color_map = { solid_map | grad_map }
+
+solid_map = { SOLID ~ L_PAREN ~ color ~ DELIM ~ val_map ~ R_PAREN }
+
+//GRAD_MAP(inner_gradient, outer_gradient, val_map)
+grad_map = { GRAD_MAP ~ L_PAREN ~ gradient ~ DELIM ~ (gradient ~ DELIM)? ~ val_map ~ R_PAREN }
+
+//colorGradient(distance, extrapolation_type, gradient_point0...gradient_pointn)
+gradient = {COLOR_GRADIENT ~ L_PAREN ~ scalar ~ DELIM ~ extrapolation_type ~ DELIM ~ grad_point ~ (DELIM ~ grad_point)+}
+
+//gradPoint(color, distance, interpolation_type)
+grad_point = { GRAD_POINT ~ L_PAREN ~ color ~ DELIM ~ scalar ~ DELIM ~ interpolation_type ~ R_PAREN }
+
+interpolation_type = {LINEAR | STEP} //Linear - lerp to next color, Step - remain
+
+extrapolation_type = { LAST_COLOR | REPEAT | REPEAT_REFLECT }
+
+//color(r,g,b,a)
+color = { COLOR ~ L_PAREN ~ scalar ~ DELIM ~ scalar ~ DELIM ~ scalar ~ DELIM ~ scalar ~ R_PAREN | ID }
+
+quat = {quat_primary ~ (product_op ~ quat_primary)*}
+quat_primary = {QUAT ~ L_PAREN ~ vec3 ~ DELIM ~ scalar ~ R_PAREN }
+
+//vec3(x,y,z)
+vec3 = { vec3_sum_term ~ (sum_op ~ vec3_sum_term)* }
+vec3_sum_term = { vec3_binary ~ (product_op ~ vec3_binary)*}
+vec3_binary = { FN_CROSS ~ L_PAREN ~ vec3_unary ~ DELIM ~ vec3_unary ~ R_PAREN }
+vec3_unary = 
+{ 
+    FN_NORM ~ L_PAREN ~ vec3_primary ~ R_PAREN | 
+    vec3_primary ~ product_op ~ scalar | 
+    scalar ~ product_op ~ vec3_primary |
+    quat ~ product_op ~ vec3_primary
+}
+vec3_primary = { vec3 | VEC3 ~ L_PAREN ~ (scalar ~ DELIM ~ scalar | vec2) ~ DELIM ~ scalar ~ R_PAREN | ID | vec2 ~ "." ~ swizzle2 ~ swizzle2 ~ swizzle2 | vec3 ~ "." ~ swizzle3 ~ swizzle3 ~ swizzle3 }
+
+swizzle3 = {X|Y|Z}
+swizzle2 = {X|Y}
+
+vec2 = { vec3_sum_term ~ (sum_op ~ vec3_sum_term)* }
+vec2_sum_term = { vec3_binary ~ (product_op ~ vec3_binary)* }
+vec2_primary = { VEC2 ~ L_PAREN ~ scalar ~ DELIM ~ scalar ~ R_PAREN | vec3 ~ "." ~ swizzle3 ~ swizzle3 | ID }
+
+component = 
+{ 
+    vec3 ~ "." ~ (X|Y|Z) |
+    vec2 ~ "." ~ (X|Y) |
+    color ~ "." ~ (R|G|B|A)
+}
+
+//plane(point, normal)
+plane = { PLANE ~ L_PAREN ~ vec3 ~ DELIM ~ vec3 ~ R_PAREN}
+
+//matrices are set up in this way to be more easily parameterized
+//punching an id in for something like rotation is difficult otherwise
+mat4 = 
+{
+    MAT4 ~ 
+        L_PAREN ~ 
+            (TRANSLATION ~ L_BRACE ~ vec3 ~ R_BRACE)? ~
+            (ROTATION ~ L_BRACE ~ quat ~ R_BRACE)? ~
+            (SCALE ~ L_BRACE ~ vec3 ~ R_BRACE)? ~
+            (SHEAR ~ L_BRACE ~ vec3 ~ R_BRACE)? ~
+        R_PAREN |
+    ID
+}
+
+//each one of the sdf primitives should have a mat4 so animations can hook into them
+val_map = 
+{
+    //Any of the "2d" ones will just get projected as a cylinder in its transform's z direction
+    //circle - radius
+    SD_CIRCLE_CYLINDER ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ R_PAREN | 
+    //box - width, height
+    SD_BOX_CYLINDER ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ DELIM ~ scalar ~ R_PAREN | 
+    //sphere - radius
+    SD_SPHERE ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ R_PAREN |
+    //plane only needs its transform. point at origin. normal is z
+    SD_PLANE ~ L_PAREN ~ mat4 ~ R_PAREN |
+    //polygon - points
+    SD_POLYGON ~ L_PAREN ~ mat4 ~ DELIM ~ vec2 ~ (DELIM ~ vec2)* ~ R_PAREN |
+    //regular polygon - radius, number of points (floored)
+    SD_REG_POLYGON ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ DELIM ~ scalar ~ R_PAREN |
+    //regular polystar - outer radius, inner radius, number of points (floored)
+    SD_POLYSTAR ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ DELIM ~ scalar ~ DELIM ~ scalar ~ R_PAREN |
+    operator
+}
+
+operator = 
+{
+    //min - list of sdfs to find the min value of
+    OP_MIN ~ L_PAREN ~ val_map ~ (DELIM ~ val_map)+ ~ R_PAREN |
+    //avg - list of sdfs to find the average of 
+    OP_AVG ~ L_PAREN ~ val_map ~ (DELIM ~ val_map)+ ~ R_PAREN |
+    //mask - sdf, mask sdf
+    OP_MASK ~ L_PAREN ~ val_map ~ DELIM ~ val_map ~ R_PAREN |
+    //round - radius of round edge 
+    OP_ROUND ~ L_PAREN ~ scalar ~ DELIM ~ val_map ~ R_PAREN |
+    //wave sheet (sine wave displacement projected from origin in z direction, period and amplitude adjusted with matrix) - dampening factor, sdf to displace
+    OP_WAVE_SHEET ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ DELIM ~ val_map ~ R_PAREN | 
+    //wave sheet (sine wave displacement revolved along z axis at the origin, period and amplitude adjusted with matrix) - dampening factor, sdf to displace
+    OP_WAVE_RING ~ L_PAREN ~ mat4 ~ DELIM ~ scalar ~ DELIM ~ val_map ~ R_PAREN
+}
+
+scalar = { sum_term ~ (sum_op ~ sum_term)* }
+
+sum_term = { product_term ~ (product_op ~ product_term)* }
+
+product_term = { unary ~ (POW ~ unary)* }
+
+unary = { SUB ~ scalar | scalar_op ~ L_PAREN ~ scalar ~ R_PAREN | primary }
+
+primary = { L_PAREN ~ scalar ~ R_PAREN | REAL | constant | ID }
+
+scalar_op = { FN_SINE | FN_COSINE | FN_TANGENT | FN_LOG }
+
+sum_op = { ADD | SUB }
+
+product_op = { MUL | DIV | MOD }
+
+constant = { PI | EULER }
+
+FN_SINE = {"sin"}
+FN_COSINE = {"cos"}
+FN_TANGENT = {"tan"}
+FN_LOG = {"log"}
+FN_DOT = {"dot"}
+FN_CROSS = {"cross"}
+FN_MAG = {"magnitude"}
+FN_NORM = {"normalize"}
+ADD = {"+"}
+SUB = {"-"}
+MUL = {"*"}
+DIV = {"/"}
+MOD = {"%"}
+POW = {"^"}
+SOLID  = {"SOLID"}
+GRAD_MAP  = {"GRAD_MAP"}
+GRAD_POINT  = {"gradPoint"}
+COLOR_GRADIENT = {"colorGradient"}
+COLOR  = {"color"}
+MAT4 = {"mat4"}
+QUAT = { "quat" }
+VEC3 = {"vec3"}
+VEC2 = {"vec2"}
+PLANE = {"plane"}
+//optional args
+L_BRACE = {"["}
+R_BRACE = {"]"}
+TRANSLATION = {"translation"}
+ROTATION = {"rotation"}
+SCALE = {"scale"}
+SHEAR = {"shear"}
+OP_MIN  = {"OP_MIN"}
+OP_AVG  = {"OP_AVG"}
+DELIM  = {","}
+SD_CIRCLE_CYLINDER = {"SD_CIRCLE"}
+SD_BOX_CYLINDER  = {"SD_BOX_CYLINDER"}
+SD_SPHERE = {"SD_SPHERE"}
+SD_PLANE = {"SD_PLANE"}
+SD_POLYGON = {"SD_POLYGON"}
+SD_REG_POLYGON = {"SD_REG_POLYGON"}
+SD_POLYSTAR = {"SD_POLYSTAR"}
+OP_WAVE_SHEET = {"OP_WAVE_SHEET"}
+OP_WAVE_RING = {"OP_WAVE_RING"}
+OP_ROUND = {"OP_ROUND"}
+TILE_PATTERN  = {"TILE_PATTERN"}
+SINE_PATTERN  = {"SINE_PATTERN"}
+SINGULAR = {"SINGULAR"}
+OP_MASK  = {"OP_MASK"}
+L_PAREN  = {"("}
+R_PAREN  = {")"}
+ALPHA = { 'a'..'z' | 'A'..'Z' }
+DIGIT = { '0'..'9' }
+PI = {"PI"}
+EULER = {"EULER"}
+ID = { !(PI | EULER) ~ (ALPHA | DIGIT)+ }
+REAL = { DIGIT+ ~ "." ~ DIGIT+ }
+LINEAR = {"LINEAR"}
+STEP = {"STEP"}
+REPEAT = {"REPEAT"}
+REPEAT_REFLECT = {"REPEAT_REFLECT"}
+LAST_COLOR = {"LAST_COLOR"}
+R = {"r"}
+G = {"g"}
+B = {"b"}
+A = {"a"}
+X = {"x"}
+Y = {"y"}
+Z = {"z"}
+WHITESPACE =  _{ (" " | "\n" | "\t" | "\r" | NEWLINE | LINE_SEPARATOR)+ }
